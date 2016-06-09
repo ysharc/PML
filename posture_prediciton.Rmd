@@ -1,0 +1,111 @@
+---
+title: Predicting exercise quality  - Practical Machine Learning Project
+author: "Yeshwanth Arcot"
+date: "Thursday, June 09, 2016"
+output: html_document
+---
+
+#Introduction
+    
+###Background
+
+    Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+    
+###Information about the data
+    The raw data contains 160 variables collected from Six young health participants who were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+<li>exactly according to the specification (**Class A**), </li>
+<li>throwing the elbows to the front (**Class B**),</li> 
+<li>lifting the dumbbell only halfway (**Class C**),</li> 
+<li>lowering the dumbbell only halfway (**Class D**)</li>  
+<li>throwing the hips to the front (**Class E**).</li>
+
+#Pre-processing data
+First let's create the **training**, **testing** and **validation** datasets. Here the validation dataset is provided by the **pml-testing.csv**, the training and testing datasets are created by partitioning the **pml-training.csv**. Assuming that empty strings(""), "NA" and "#DIV/0!" values as non-available data we create the dataframes as follows 
+
+```{r }
+library(caret) #For partitioning Data
+
+#Assuming you already have the data in your working directory, if you don't use the commented code below 
+#trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#validationUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+#rawData <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+#testing <- read.csv(url(validationUrl), na.strings=c("NA","#DIV/0!",""))
+
+rawData <- read.csv(file="pml-training.csv", na.strings=c("", "NA","#DIV/0!"), sep=",")
+validation <- read.csv(file="pml-testing.csv", na.strings=c("", "NA","#DIV/0!"), sep=",")
+
+
+
+dim(rawData) 
+
+dim(validation)
+
+set.seed(59647) #For reproducible results
+
+inTrain <- createDataPartition(rawData$classe, p=0.70, list=FALSE)
+
+rawTraining <- rawData[inTrain,]
+rawTesting <- rawData[-inTrain,]
+```
+##Cleaning Data
+    Now let's see how many of the variables have non-available data and their NA count.
+```{r }    
+naCount <-sapply(rawData, function(y) sum(length(which(is.na(y)))))
+
+naCount <- data.frame(naCount)
+
+table(naCount)
+```
+
+From the above table we see that there are only 60 varibales with zero missing values, the other variables contain more than 19000 missing values out of the total 19622 observations. So we don't want to include them because they have little value as a predictor variable. So these variables can be defined removed as follows
+
+```{r }
+cleanTrain <- rawTraining[ , colSums(is.na(rawTraining)) == 0]
+cleanTest <- rawTesting[ , colSums(is.na(rawTesting)) == 0]
+validation <- validation[ , colSums(is.na(validation)) == 0]
+
+dim(cleanTrain)
+```
+
+Now, the data has only 60 variables. But variables like X which is the index/serial number of the data and time_stamps have little to no effect on predictability since  this data has been collected in a controlled experimental study. So we can remove those variables as well. 
+
+```{r }
+cleanTrain <- subset(cleanTrain, select = -c(X,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,new_window,num_window))
+cleanTest <- subset(cleanTest, select = -c(X,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,new_window,num_window))
+validation <- subset(validation, select = -c(X,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,new_window,num_window))
+```
+##Building the model
+With the remaining varibales, let's build a random forest to predict the classes. Lets apply a cross-validation with k=5 with the builtin option available in caret package. Then let's set the number of trees to build to 300(**Note**: If you have a machine that has pretty good RAM you can increase the ntree, however if you have less RAM, it'll take considerable time to build the model.). 
+
+```{r }
+set.seed(90047)
+
+controlOptions = trainControl(method="cv",5)
+
+rfModel <- train(classe~., data=cleanTrain, method="rf", trControl=controlOptions, ntree=300)
+
+predictedRF <- predict(rfModel,newdata = cleanTest)
+
+confusionMatrix(predictedRF,cleanTest$classe)
+
+ooSE <- 1 - as.numeric(confusionMatrix(cleanTest$classe, predictedRF)$overall[1])
+```
+```{r results='hide'}
+accuracy <- postResample(predictedRF, cleanTest$classe)
+```
+
+We can see that the estimated accuracy is  and the estimated Out of Sample Error is `r ooSE`. Now lets finally validate our model. The variable importanc can be found in the plot below
+
+
+```{r}
+imp <- data.frame(varImp(rfModel)$importance)
+qplot(y=rownames(imp),x=imp$Overall)
+
+```
+
+#Validation
+```{r }
+finalPrediction <- predict(rfModel, newdata=validation)
+finalPrediction
+```
