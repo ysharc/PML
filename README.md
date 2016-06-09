@@ -15,4 +15,4 @@ The raw data contains 160 variables collected from Six young health participants
 <li>lowering the dumbbell only halfway (**Class D**)</li>
 <li>throwing the hips to the front (**Class E**).</li>
 
-Project Report is at [url]
+Project Report is at http://ysharc.github.io/PML/
